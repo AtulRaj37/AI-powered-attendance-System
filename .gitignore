@@ -48,9 +48,9 @@ frontend/build/
 
 # Database and ML uploads
 backend/attendance_db*
-uploads/
-dataset/
-models/
+/uploads/
+/dataset/
+/models/
 
 # OS specific
 .DS_Store
