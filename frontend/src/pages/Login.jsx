@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../lib/api';
 import { jwtDecode } from 'jwt-decode';
 import { ScanFace, User, BookOpen, ShieldCheck, ArrowRight, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 
@@ -41,7 +41,7 @@ const Login = () => {
         formData.append('username', email); 
         formData.append('password', password);
 
-        const response = await axios.post('http://localhost:8000/api/v1/auth/login', formData, {
+        const response = await api.post('/auth/login', formData, {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         });
 
@@ -65,7 +65,7 @@ const Login = () => {
           ...(activeTab === 'STUDENT' && { roll_number: rollNumber, department })
         };
 
-        await axios.post('http://localhost:8000/api/v1/auth/signup', payload);
+        await api.post('/auth/signup', payload);
         
         setSuccessMsg('Account securely provisioned! You may now sign in.');
         setTimeout(() => setIsLogin(true), 2000);
