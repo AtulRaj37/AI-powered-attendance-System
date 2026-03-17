@@ -14,10 +14,20 @@ def run_system():
     
     is_windows = sys.platform.startswith('win')
 
-    # Start FastAPI Backend
+    venv_python_win = os.path.join(base_dir, "backend", "venv", "Scripts", "python.exe")
+    venv_python_unix = os.path.join(base_dir, "backend", "venv", "bin", "python")
+    
+    if os.path.exists(venv_python_win):
+        python_executable = venv_python_win
+    elif os.path.exists(venv_python_unix):
+        python_executable = venv_python_unix
+    else:
+        python_executable = sys.executable
+
+    print(f">>> Using Python: {python_executable}")
+
     print(">>> Starting FastAPI backend...")
-    # Using sys.executable ensures we use the current Python environment
-    backend_cmd = [sys.executable, "-m", "uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    backend_cmd = [python_executable, "-m", "uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
     try:
         backend_process = subprocess.Popen(backend_cmd, cwd=backend_dir)
     except Exception as e:
