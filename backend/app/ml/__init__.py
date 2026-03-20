@@ -1,4 +1,7 @@
-from .face_detection import detect_faces
-from .face_embedding import generate_embedding, generate_multiple_embeddings
-from .face_matcher import find_best_match
+from .face_detection import detect_faces, preprocess_image, get_detection_info
+from .face_embedding import generate_embedding, generate_multiple_embeddings, generate_augmented_embeddings, compute_average_embedding, get_embedding_info
+from .face_matcher import find_best_match, get_matcher_info
 from .liveness_detector import check_liveness, eye_aspect_ratio
+from .face_quality import assess_face_quality, get_quality_info
+from .anti_spoofing import check_anti_spoofing, get_anti_spoofing_info
+from .attendance_predictor import predict_attendance_risk, get_prediction_info

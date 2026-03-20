@@ -7,7 +7,9 @@ from app.models.student import Student
 from app.models.face_embedding import FaceEmbedding
 from app.schemas.student import Student as StudentSchema, StudentCreate
 from app.ml.face_detection import detect_faces
-from app.ml.face_embedding import generate_embedding
+from app.ml.face_embedding import generate_embedding, generate_augmented_embeddings, compute_average_embedding
+from app.ml.face_quality import assess_face_quality
+from app.ml.anti_spoofing import check_anti_spoofing
 import io
 import os
 from PIL import Image
@@ -212,8 +214,24 @@ async def register_face(
             if len(face_locations) > 1:
                 errors.append(f"{file.filename}: Found {len(face_locations)} faces, expected exactly 1. Please ensure only the student is in frame.")
                 continue
+
+            face_loc = face_locations[0]
+
+            # Quality Assessment
+            quality_score, is_quality_ok, quality_details = assess_face_quality(img_array, face_loc)
+            print(f"[REGISTER] Quality check -> score={quality_score:.1f}%, acceptable={is_quality_ok}")
+            if not is_quality_ok:
+                errors.append(f"{file.filename}: Image quality too low ({quality_score:.0f}%). Please ensure good lighting and no blur.")
+                continue
+
+            # Anti-Spoofing Check
+            spoof_class, spoof_conf, spoof_details = check_anti_spoofing(img_array, face_loc)
+            print(f"[REGISTER] Anti-spoofing -> {spoof_class} (confidence={spoof_conf:.3f})")
+            if spoof_class == "FAKE":
+                errors.append(f"{file.filename}: Detected as a photo/screen. Please use a live camera.")
+                continue
                 
-            top, right, bottom, left = face_locations[0]
+            top, right, bottom, left = face_loc
             
             pad = 20
             h, w, _ = img_array.shape
@@ -222,18 +240,42 @@ async def register_face(
             Image.fromarray(crop).save(preview_path)
             print(f"[REGISTER] Saved face preview image to {preview_path}")
             
-            embedding = generate_embedding(img_array, face_locations[0])
-            print(f"[REGISTER] Embedding generated: {embedding is not None}")
-            if embedding is not None:
+            # Generate augmented embeddings for robust recognition
+            augmented_embeds = generate_augmented_embeddings(img_array, face_loc, num_augmentations=8)
+            print(f"[REGISTER] Generated {len(augmented_embeds)} augmented embeddings")
+            
+            if len(augmented_embeds) >= 3:
+                # Store the averaged embedding (more robust)
+                avg_embedding = compute_average_embedding(augmented_embeds)
                 new_embedding = FaceEmbedding(
                     student_id=student.id,
-                    embedding_vector=embedding.tolist()
+                    embedding_vector=avg_embedding.tolist()
                 )
                 db.add(new_embedding)
                 embeddings_added += 1
-                print(f"[REGISTER] ✅ Successfully registered face for student_id={student.id}")
+                print(f"[REGISTER] ✅ Registered averaged embedding from {len(augmented_embeds)} augmentations")
+                
+                # Also store a couple of individual embeddings for diversity
+                for extra_emb in augmented_embeds[:2]:
+                    new_extra = FaceEmbedding(
+                        student_id=student.id,
+                        embedding_vector=extra_emb.tolist()
+                    )
+                    db.add(new_extra)
+                    embeddings_added += 1
             else:
-                errors.append(f"{file.filename}: Failed to generate embedding.")
+                # Fallback: store single embedding
+                embedding = generate_embedding(img_array, face_loc)
+                if embedding is not None:
+                    new_embedding = FaceEmbedding(
+                        student_id=student.id,
+                        embedding_vector=embedding.tolist()
+                    )
+                    db.add(new_embedding)
+                    embeddings_added += 1
+                    print(f"[REGISTER] ✅ Registered single embedding (fallback)")
+                else:
+                    errors.append(f"{file.filename}: Failed to generate embedding.")
         except Exception as e:
             errors.append(f"{file.filename}: Error processing image ({str(e)}).")
             print(f"[REGISTER] ❌ Exception: {e}")

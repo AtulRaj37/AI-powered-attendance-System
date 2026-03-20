@@ -21,6 +21,8 @@ from app.ml.face_detection import detect_faces
 from app.ml.face_embedding import generate_embedding
 from app.ml.face_matcher import find_best_match
 from app.ml.liveness_detector import check_liveness
+from app.ml.face_quality import assess_face_quality
+from app.ml.anti_spoofing import check_anti_spoofing
 
 router = APIRouter()
 
@@ -70,18 +72,34 @@ async def recognize_face(
     current_time = datetime.utcnow()
 
     for face_loc in face_locations:
+        # Stage 1: Face Quality Assessment
+        quality_score, is_quality_ok, quality_details = assess_face_quality(img_array, face_loc)
+        print(f"[RECOGNIZE] Quality check -> score={quality_score:.1f}%, acceptable={is_quality_ok}")
+        if not is_quality_ok:
+            print(f"[RECOGNIZE] Skipping face - quality too low ({quality_score:.1f}%)")
+            continue
+
+        # Stage 2: Anti-Spoofing Check
+        spoof_class, spoof_conf, spoof_details = check_anti_spoofing(img_array, face_loc)
+        print(f"[RECOGNIZE] Anti-spoofing -> {spoof_class} (confidence={spoof_conf:.3f})")
+        if spoof_class == "FAKE":
+            print(f"[RECOGNIZE] Skipping face - detected as SPOOF")
+            continue
+
+        # Stage 3: Liveness Check
         is_live, ear = check_liveness(img_array, face_loc, ear_threshold=0.15)
         print(f"[RECOGNIZE] Liveness check -> is_live={is_live}, EAR={ear:.3f}")
-        
         if not is_live and ear > 0.0:
             print(f"[RECOGNIZE] Skipping face - eyes appear closed (EAR={ear:.3f})")
             continue
         
+        # Stage 4: Generate Face Embedding
         embedding = generate_embedding(img_array, face_loc)
         if embedding is None:
             print(f"[RECOGNIZE] Failed to generate embedding for face at {face_loc}")
             continue
             
+        # Stage 5: KNN-based Face Matching
         match_data = find_best_match(db, embedding, threshold=0.75)
         print(f"[RECOGNIZE] Match result: match={match_data['match']}, dist={match_data.get('distance', 'N/A')}, name={match_data['student'].name if match_data.get('student') else 'None'}")
         
